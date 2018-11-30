@@ -68,7 +68,7 @@ class DeeplabModelTest(tf.test.TestCase):
             # Check computed results for each output type.
             for output in outputs_to_num_classes:
               scales_to_logits = outputs_to_scales_to_logits[output]
-              self.assertListEqual(sorted(scales_to_logits.keys()),
+              self.assertListEqual(sorted(list(scales_to_logits.keys())),
                                    sorted(expected_endpoints[i]))
 
               # Expected number of logits = len(image_pyramid) + 1, since the
@@ -108,6 +108,9 @@ class DeeplabModelTest(tf.test.TestCase):
           # Expect only one output.
           self.assertEqual(len(scales_to_logits), 1)
           for logits in scales_to_logits.values():
+            print('logit type: ', type(logits))
+            print('logit shape: ', logits.shape)
+            print('original input image shape: ', inputs.shape)
             self.assertTrue(logits.any())
 
   def testBuildDeepLabWithDensePredictionCell(self):
@@ -137,7 +140,7 @@ class DeeplabModelTest(tf.test.TestCase):
             image_pyramid=[1.0])
         for output in outputs_to_num_classes:
           scales_to_model_results = outputs_to_scales_to_model_results[output]
-          self.assertListEqual(scales_to_model_results.keys(),
+          self.assertListEqual(list(scales_to_model_results.keys()),
                                expected_endpoints)
           self.assertEqual(len(scales_to_model_results), 1)
 
