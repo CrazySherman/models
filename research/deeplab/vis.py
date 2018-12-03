@@ -19,6 +19,7 @@ See model.py for more details and usage.
 """
 import math
 import os.path
+import sys
 import time
 import numpy as np
 import tensorflow as tf
@@ -292,7 +293,7 @@ def main(unused_argv):
 
         image_id_offset = 0
         for batch in range(num_batches):
-          tf.logging.info('Visualizing batch %d / %d', batch + 1, num_batches)
+          sys.stdout.write('\rVisualizing batch {} / {}'.format(batch + 1, num_batches))
           _process_batch(sess=sess,
                          original_images=samples[common.ORIGINAL_IMAGE],
                          semantic_predictions=predictions,
@@ -304,7 +305,8 @@ def main(unused_argv):
                          raw_save_dir=raw_save_dir,
                          train_id_to_eval_id=train_id_to_eval_id)
           image_id_offset += FLAGS.vis_batch_size
-
+      sys.stdout.write('\n')
+      sys.stdout.flush()
       tf.logging.info(
           'Finished visualization at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                        time.gmtime()))

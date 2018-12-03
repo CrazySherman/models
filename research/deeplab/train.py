@@ -122,7 +122,7 @@ flags.DEFINE_string('tf_initial_checkpoint', None,
                     'The initial checkpoint in tensorflow format.')
 
 # Set to False if one does not want to re-use the trained classifier weights.
-flags.DEFINE_boolean('initialize_last_layer', True,
+flags.DEFINE_boolean('initialize_last_layer', False,
                      'Initialize the last layer.')
 
 flags.DEFINE_boolean('last_layers_contain_logits_only', False,
@@ -198,6 +198,7 @@ def _build_deeplab(inputs_queue, outputs_to_num_classes, ignore_label):
       crop_size=FLAGS.train_crop_size,
       atrous_rates=FLAGS.atrous_rates,
       output_stride=FLAGS.output_stride)
+  print('model options: ', model_options)
   outputs_to_scales_to_logits = model.multi_scale_logits(
       samples[common.IMAGE],
       model_options=model_options,

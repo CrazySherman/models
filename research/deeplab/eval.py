@@ -124,7 +124,6 @@ def main(unused_argv):
     predictions = tf.reshape(predictions, shape=[-1])
     labels = tf.reshape(samples[common.LABEL], shape=[-1])
     weights = tf.to_float(tf.not_equal(labels, dataset.ignore_label))
-
     # Set ignore_label regions to label 0, because metrics.mean_iou requires
     # range of labels = [0, dataset.num_classes). Note the ignore_label regions
     # are not evaluated since the corresponding regions contain weights = 0.
@@ -139,6 +138,10 @@ def main(unused_argv):
 
     # Define the evaluation metric.
     metric_map = {}
+    indices = tf.squeeze(tf.where(tf.less_equal(
+        labels, dataset.num_classes - 1)), 1)
+    labels = tf.cast(tf.gather(labels, indices), tf.int32)
+    predictions = tf.gather(predictions, indices)
     metric_map[predictions_tag] = tf.metrics.mean_iou(
         predictions, labels, dataset.num_classes, weights=weights)
 

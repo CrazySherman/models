@@ -108,9 +108,10 @@ class DeeplabModelTest(tf.test.TestCase):
           # Expect only one output.
           self.assertEqual(len(scales_to_logits), 1)
           for logits in scales_to_logits.values():
-            print('logit type: ', type(logits))
-            print('logit shape: ', logits.shape)
             print('original input image shape: ', inputs.shape)
+            print('input-output stride: 16')
+            print('output logit type: ', type(logits))
+            print('ouptut logit shape: ', logits.shape)
             self.assertTrue(logits.any())
 
   def testBuildDeepLabWithDensePredictionCell(self):

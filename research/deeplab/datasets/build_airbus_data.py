@@ -3,11 +3,12 @@ import numpy as np
 from PIL import Image
 import math
 import build_data
-import os
+import os, sys
+import random
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
-tf.logging.set_verbosity(tf.logging.DEBUG)
+tf.logging.set_verbosity(tf.logging.INFO)
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -28,7 +29,7 @@ tf.app.flags.DEFINE_string('csv_file',
     Val size:  1000
     Total size:  192556 including noship (empty) images
 """
-_NUM_SHARDS = 10
+_NUM_SHARDS = 50
 _SEED = 97
 VAL_SIZE = 1000
 FILTER_NOSHIP = True
@@ -39,6 +40,8 @@ def _convert_dataset(dataset_split):
     masks_rle = pd.read_csv(FLAGS.csv_file)
 
     filenames = os.listdir(FLAGS.image_folder)
+    # random shuffle images 
+    random.shuffle(filenames)
 
     # perform train-val split based the same constant seed number
     train_imgs, val_imgs = train_test_split(filenames, test_size=VAL_SIZE, random_state=_SEED)
@@ -84,6 +87,9 @@ def _convert_dataset(dataset_split):
             start_idx = shard_id * num_per_shard
             end_idx = min((shard_id + 1) * num_per_shard, num_images)
             for i in range(start_idx, end_idx):
+                sys.stdout.write('\r>> Converting image %d/%d shard %d' % (
+                    i + 1, len(filenames), shard_id))
+                sys.stdout.flush()
                 imageId = filenames[i]
                 mask = masks_rle.loc[masks_rle['ImageId'] == imageId, 'EncodedPixels'].dropna().tolist()
                 # filter emtpy images first
@@ -109,10 +115,11 @@ def _convert_dataset(dataset_split):
                 example = build_data.image_seg_to_tfexample(image_data, filenames[i], height, width, seg_data_png)
                 tfrecord_writer.write(example.SerializeToString())
                 num_images_converted += 1
-                tf.logging.debug('finished image: {}'.format(imageId))
-
+                #tf.logging.debug('finished image: {}'.format(imageId))
+    sys.stdout.write('\n')
+    sys.stdout.flush()
     tf.logging.info('actual number of images converted: {}'.format(num_images_converted))
-
+    
 def main(unused_argv): 
     if len(os.listdir(FLAGS.output_dir)) != 0:
         raise RuntimeError('Remember to clear output dir: {} before you run this'.format(FLAGS.output_dir))
