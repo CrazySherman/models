@@ -114,7 +114,7 @@ _AIRBUS_INFORMATION = DatasetDescriptor(
         'val': 229
     },
     num_classes=2,
-    ignore_label=255,
+    ignore_label=255
   )
 
 _DATASETS_INFORMATION = {

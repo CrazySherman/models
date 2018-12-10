@@ -67,16 +67,117 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
           align_corners=True)
 
     scaled_labels = tf.reshape(scaled_labels, shape=[-1])
-    not_ignore_mask = tf.to_float(tf.not_equal(scaled_labels,
+    loss_weights = tf.to_float(tf.not_equal(scaled_labels,
                                                ignore_label)) * loss_weight
     one_hot_labels = slim.one_hot_encoding(
         scaled_labels, num_classes, on_value=1.0, off_value=0.0)
     tf.losses.softmax_cross_entropy(
         one_hot_labels,
         tf.reshape(logits, shape=[-1, num_classes]),
-        weights=not_ignore_mask,
+        weights=loss_weights,
         scope=loss_scope)
 
+# smoothed dice coefficient
+# smoothed dice coefficient
+def dice_coefficient(logits, labels):
+    """
+        logits: [batch_size * img_height * img_width * num_classes]
+        labels: [batch_size * img_height * img_width]
+    """
+    preds = tf.nn.softmax(logits)[:,:,:,1]
+    labels = tf.to_float(labels)
+    # flat thee shit
+    preds = tf.reshape(preds, shape=[-1])
+    labels = tf.reshape(labels, shape=[-1])
+    return (1 + 2 * tf.reduce_sum(preds * labels)) / (1 + tf.reduce_sum(preds) + tf.reduce_sum(labels))
+
+def focal_loss(labels, logits, gamma=2.0, alpha=4.0):
+    """
+    focal loss for multi-classification
+    FL(p_t)=-alpha(1-p_t)^{gamma}ln(p_t)
+    gradient is d(Fl)/d(p_t) not d(Fl)/d(x) as described in paper
+    d(Fl)/d(p_t) * [p_t(1-p_t)] = d(Fl)/d(x)
+    Lin, T.-Y., Goyal, P., Girshick, R., He, K., & Dollár, P. (2017).
+    Focal Loss for Dense Object Detection, 130(4), 485–491.
+    https://doi.org/10.1016/j.ajodo.2005.02.022
+    :param labels: flattened one hot label [N, num_class]
+    :param logits: flattened logits before softmax layer of shape [N, num_class]
+    :param gamma:
+    :param alpha:
+    :return: shape of [batch_size]
+    """
+    epsilon = 1.e-9
+    logits = tf.nn.softmax(logits)    
+    model_out = logits + epsilon
+    ce = -labels * tf.log(model_out)
+    weight = tf.pow(1 - model_out, gamma)
+    fl = alpha * weight * ce
+    reduced_fl = tf.reduce_mean(tf.reduce_sum(fl, axis=-1))
+    return reduced_fl
+
+# experiment different types of losses
+def my_mixed_loss(scales_to_logits,
+                  labels,
+                  num_classes,
+                  ignore_label,
+                  loss_weight=1.0,
+                  upsample_logits=True,
+                  scope=None):  
+  """ 
+    same interface as add_softmax.......
+  """
+  if labels is None:
+    raise ValueError('No label for softmax cross entropy loss.')
+
+  for scale, logits in six.iteritems(scales_to_logits):
+    loss_scope = None
+    if scope:
+      loss_scope = '%s_%s' % (scope, scale)
+
+    if upsample_logits:
+      # Label is not downsampled, and instead we upsample logits.
+      logits = tf.image.resize_bilinear(
+          logits,
+          preprocess_utils.resolve_shape(labels, 4)[1:3],
+          align_corners=True)
+      scaled_labels = labels
+    else:
+      # Label is downsampled to the same size as logits.
+      scaled_labels = tf.image.resize_nearest_neighbor(
+          labels,
+          preprocess_utils.resolve_shape(logits, 4)[1:3],
+          align_corners=True)
+
+    # caculate dice coefficient
+    dice = dice_coefficient(logits, scaled_labels)
+    dice_loss = tf.identity(-tf.log(dice), 'dice_coef')
+
+    flattened_labels = tf.reshape(scaled_labels, shape=[-1])
+    # weighted loss coefficient? 
+    # loss_weight = tf.to_float(scaled_labels + 1)    # SET pos:neg loss contrib to 2: 1
+    loss_weights = tf.to_float(tf.not_equal(scaled_labels,ignore_label)) * loss_weight
+
+    one_hot_labels = slim.one_hot_encoding(
+        flattened_labels, num_classes, on_value=1.0, off_value=0.0)
+    logits_flattened = tf.reshape(logits, shape=[-1, num_classes])
+
+    # bce loss
+    bce_loss = 1e-3 * tf.nn.softmax_cross_entropy_with_logits_v2(
+        one_hot_labels,
+        logits_flattened,
+        weights=loss_weights,
+        scope=loss_scope)
+    # # focal loss
+    # f_losses = focal_loss(one_hot_labels, logits_flattened)
+    # f_losses = tf.identity(f_losses, 'focal loss')
+
+
+    # bce ~ 0.25 ~ 1.5,   dice ~ 0.8
+
+    # the funny shit is the deployment module will aggregate all losses you added by a simple sum
+    # so you gotta make sure you have all loss individually defined well here
+    slim.losses.add_loss(bce_loss)
+    slim.losses.add_loss(dice_loss)   # log the dice to smooth its gradient: https://www.kaggle.com/iafoss/unet34-dice-0-87/notebook
 
 def get_model_init_fn(train_logdir,
                       tf_initial_checkpoint,
