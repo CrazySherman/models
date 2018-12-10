@@ -166,6 +166,8 @@ flags.DEFINE_string('train_split', 'train',
 
 flags.DEFINE_string('dataset_dir', None, 'Where the dataset reside.')
 
+tf.enable_eager_execution()
+
 
 def _build_deeplab(inputs_queue, outputs_to_num_classes, ignore_label):
   """Builds a clone of DeepLab.
@@ -214,7 +216,7 @@ def _build_deeplab(inputs_queue, outputs_to_num_classes, ignore_label):
       name=common.OUTPUT_TYPE)
 
   for output, num_classes in six.iteritems(outputs_to_num_classes):
-    train_utils.add_softmax_cross_entropy_loss_for_each_scale(
+    train_utils.my_mixed_loss(
         outputs_to_scales_to_logits[output],
         samples[common.LABEL],
         num_classes,
