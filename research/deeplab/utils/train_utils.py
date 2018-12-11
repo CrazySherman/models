@@ -86,15 +86,12 @@ def dice_coefficient(logits, labels, scope_name):
     """
     with tf.name_scope(scope_name, 'dice_coef', [logits, labels]) as scope:
         preds = tf.nn.softmax(logits)[:,:,:,1]
-        labels = tf.to_float(labels)
         # flat thee shit
-        preds = tf.reshape(preds, shape=[-1])
-        labels = tf.reshape(labels, shape=[-1])
-        probe1 = tf.reduce_sum(preds, name='dice_preds')
-        probe2 = tf.reduce_sum(labels, name='dice_labels')
-        tf.add_to_collection('debugging', probe1)
-        tf.add_to_collection('debugging', probe2)
-        return (1 + 2 * tf.reduce_sum(preds * labels)) / (1 + tf.reduce_sum(preds) + tf.reduce_sum(labels))
+        batch_size = logits.shape[0]
+        preds = tf.reshape(preds, shape=[batch_size, -1])
+        labels = tf.reshape(tf.to_float(labels), shape=[batch_size, -1])
+        dices = (1 + 2 * tf.reduce_sum(preds * labels, axis=1)) / (1 + tf.reduce_sum(preds, axis=1) + tf.reduce_sum(labels, axis=1))
+        return tf.reduce_mean(dices)
 
 def focal_loss(labels, logits, scope_name, gamma=2.0, alpha=4.0):
     """
@@ -134,6 +131,9 @@ def my_mixed_loss(scales_to_logits,
   """
   if labels is None:
     raise ValueError('No label for softmax cross entropy loss.')
+  # TODO remove this probe ondce code cmoplete
+  probe1 = tf.reduce_max(labels, name='labels_max')
+  tf.add_to_collection('debugging', probe1)
 
   for scale, logits in six.iteritems(scales_to_logits):
     loss_scope = None

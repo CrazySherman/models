@@ -319,7 +319,7 @@ def main(unused_argv):
       summaries.add(tf.summary.scalar('losses/%s' % loss.op.name, loss))
 
     for probe in tf.get_collection("debugging"):
-      slim.summaries.add_scalar_summary(tensor, name=probe.op.name, prefix='[Debugging]', print_summary=True):
+      slim.summaries.add_scalar_summary(probe, name=probe.op.name,  print_summary=True)
 
     # Build the optimizer based on the device specification.
     with tf.device(config.optimizer_device()):
