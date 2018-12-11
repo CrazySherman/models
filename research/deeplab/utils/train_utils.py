@@ -90,8 +90,10 @@ def dice_coefficient(logits, labels, scope_name):
         # flat thee shit
         preds = tf.reshape(preds, shape=[-1])
         labels = tf.reshape(labels, shape=[-1])
-        tf.print(tf.reduce_sum(preds),  output_stream=sys.stderr)
-        tf.print(tf.reduce_sum(labels),  output_stream=sys.stderr)
+        probe1 = tf.reduce_sum(preds, name='dice_preds')
+        probe2 = tf.reduce_sum(labels, name='dice_labels')
+        tf.add_to_collection('debugging', probe1)
+        tf.add_to_collection('debugging', probe2)
         return (1 + 2 * tf.reduce_sum(preds * labels)) / (1 + tf.reduce_sum(preds) + tf.reduce_sum(labels))
 
 def focal_loss(labels, logits, scope_name, gamma=2.0, alpha=4.0):

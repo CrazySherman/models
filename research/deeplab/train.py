@@ -166,8 +166,6 @@ flags.DEFINE_string('train_split', 'train',
 
 flags.DEFINE_string('dataset_dir', None, 'Where the dataset reside.')
 
-tf.enable_eager_execution()
-
 
 def _build_deeplab(inputs_queue, outputs_to_num_classes, ignore_label):
   """Builds a clone of DeepLab.
@@ -319,6 +317,9 @@ def main(unused_argv):
     # Add summaries for losses.
     for loss in tf.get_collection(tf.GraphKeys.LOSSES, first_clone_scope):
       summaries.add(tf.summary.scalar('losses/%s' % loss.op.name, loss))
+
+    for probe in tf.get_collection("debugging"):
+      slim.summaries.add_scalar_summary(tensor, name=probe.op.name, prefix='[Debugging]', print_summary=True):
 
     # Build the optimizer based on the device specification.
     with tf.device(config.optimizer_device()):
