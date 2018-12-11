@@ -108,6 +108,10 @@ def _convert_dataset(dataset_split):
                 # save the shit to a temporary location
                 Image.fromarray(seg_data, mode='L').save('/tmp/tmp.png')
                 seg_data_png = tf.gfile.FastGFile('/tmp/tmp.png', 'rb').read()
+                seg_png_img = label_reader.decode_image(seg_data_png)
+                # make sure label map is not lossy during this conversion
+                np.testing.assert_array_equal(seg_png_img, seg_data_png)
+
                 seg_height, seg_width = label_reader.read_image_dims(seg_data_png)
                 height, width = 768, 768
                 if seg_height != height or seg_width != width or img_height != height or img_width != width:
