@@ -17,13 +17,15 @@
 See model.py for more details and usage.
 """
 
-import math
+import math, os
 import six
 import tensorflow as tf
 from deeplab import common
 from deeplab import model
 from deeplab.datasets import segmentation_dataset
 from deeplab.utils import input_generator
+from PIL import Image
+import numpy as np
 
 slim = tf.contrib.slim
 
@@ -120,8 +122,8 @@ def main(unused_argv):
           model_options=model_options,
           eval_scales=FLAGS.eval_scales,
           add_flipped_images=FLAGS.add_flipped_images)
-    predictions = predictions[common.OUTPUT_TYPE]
-    predictions = tf.reshape(predictions, shape=[-1])
+    masks = predictions[common.OUTPUT_TYPE]
+    predictions = tf.reshape(masks, shape=[-1])
 
     labels = tf.reshape(samples[common.LABEL], shape=[-1])
     weights = tf.to_float(tf.not_equal(labels, dataset.ignore_label))
@@ -149,12 +151,16 @@ def main(unused_argv):
         math.ceil(dataset.num_samples / float(FLAGS.eval_batch_size)))
 
     with tf.Session() as sess:
-      sess.run(tf.global_variables_initializer())
-      sess.run(tf.local_variables_initializer())
-
+      ini_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+      sess.run(ini_op)
+      coord = tf.train.Coordinator()
+      thread = tf.train.start_queue_runners(sess=sess,coord=coord)
       for batch_id in range(num_batches):
-        res = sess.run(my_metric) 
-        print('Metric: sum has value: %f' % res)
+        res = sess.run(masks)
+        res = res.astype(np.uint8) 
+        Image.fromarray(res[0].squeeze(), mode='L').save(os.path.join(FLAGS.eval_logdir, '{}.png').format(batch_id))
+
+        print('Metric: sum has value: %f' % res.sum())
 
 
 
