@@ -122,6 +122,7 @@ def main(unused_argv):
           add_flipped_images=FLAGS.add_flipped_images)
     predictions = predictions[common.OUTPUT_TYPE]
     predictions = tf.reshape(predictions, shape=[-1])
+
     labels = tf.reshape(samples[common.LABEL], shape=[-1])
     weights = tf.to_float(tf.not_equal(labels, dataset.ignore_label))
     # Set ignore_label regions to label 0, because metrics.mean_iou requires
@@ -137,40 +138,31 @@ def main(unused_argv):
       predictions_tag += '_flipped'
 
     # Define the evaluation metric.
-    metric_map = {}
+    
     indices = tf.squeeze(tf.where(tf.less_equal(
         labels, dataset.num_classes - 1)), 1)
     labels = tf.cast(tf.gather(labels, indices), tf.int32)
     predictions = tf.gather(predictions, indices)
-    metric_map[predictions_tag] = tf.metrics.mean_iou(
+    eval_op = tf.metrics.mean_iou(
         predictions, labels, dataset.num_classes, weights=weights)
-
-    metrics_to_values, metrics_to_updates = (
-        tf.contrib.metrics.aggregate_metric_map(metric_map))
-
-    for metric_name, metric_value in six.iteritems(metrics_to_values):
-      slim.summaries.add_scalar_summary(
-          metric_value, metric_name, print_summary=True)
-
     num_batches = int(
         math.ceil(dataset.num_samples / float(FLAGS.eval_batch_size)))
+    results = []
+    with tf.Session() as sess:
+      ini_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+      sess.run(ini_op)
+      coord = tf.train.Coordinator()
+      thread = tf.train.start_queue_runners(sess=sess,coord=coord)
+      for batch_id in range(num_batches):
+        #images, res = sess.run([origin_images, masks])
+        res = sess.run([eval_op])
+        print('cur batch mIoU: ', res)
+        results.append(res)
 
-    tf.logging.info('Eval num images %d', dataset.num_samples)
-    tf.logging.info('Eval batch size %d and num batch %d',
-                    FLAGS.eval_batch_size, num_batches)
+    print('the overall mIoU is: ', sum(results) / len(results))
 
-    num_eval_iters = None
-    if FLAGS.max_number_of_evaluations > 0:
-      num_eval_iters = FLAGS.max_number_of_evaluations
-    slim.evaluation.evaluation_loop(
-        master=FLAGS.master,
-        checkpoint_dir=FLAGS.checkpoint_dir,
-        logdir=FLAGS.eval_logdir,
-        num_evals=num_batches,
-        eval_op=list(metrics_to_updates.values()),
-        max_number_of_evaluations=num_eval_iters,
-        eval_interval_secs=FLAGS.eval_interval_secs)
 
+    
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('checkpoint_dir')
