@@ -143,8 +143,10 @@ def main(unused_argv):
         labels, dataset.num_classes - 1)), 1)
     labels = tf.cast(tf.gather(labels, indices), tf.int32)
     predictions = tf.gather(predictions, indices)
-    eval_op = tf.metrics.mean_iou(
-        predictions, labels, dataset.num_classes, weights=weights)
+    value_ops, update_ops = slim.metrics.aggregate_metrics()
+    names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
+      "eval/mean_iou": slim.metrics.mean_iou(predictions, labels, dataset.num_classes, weights=weights)
+    })
     num_batches = int(
         math.ceil(dataset.num_samples / float(FLAGS.eval_batch_size)))
     results = []
@@ -155,14 +157,16 @@ def main(unused_argv):
       thread = tf.train.start_queue_runners(sess=sess,coord=coord)
       for batch_id in range(num_batches):
         #images, res = sess.run([origin_images, masks])
-        res = sess.run([eval_op])
-        print('cur batch mIoU: ', res)
-        results.append(res)
+        # this shit aggragate all the tmp metric values
+        sess.run(names_to_updates.values())
 
-    print('the overall mIoU is: ', sum(results) / len(results))
+      # this shit compute the final aggregated metric value
+      metric_values = sess.run(names_to_values.values())
+
+      for metric, value in zip(names_to_values.keys(), metric_values):
+        print('Metric %s has value: %f' % (metric, value))
 
 
-    
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('checkpoint_dir')
