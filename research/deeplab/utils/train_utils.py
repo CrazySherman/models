@@ -78,14 +78,19 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
         scope=loss_scope)
 
 # smoothed dice coefficient
-# smoothed dice coefficient
-def dice_coefficient(logits, labels, scope_name):
+def dice_coefficient(logits, labels, scope_name, padding_val=255):
     """
         logits: [batch_size * img_height * img_width * num_classes]
         labels: [batch_size * img_height * img_width]
     """
     with tf.name_scope(scope_name, 'dice_coef', [logits, labels]) as scope:
         preds = tf.nn.softmax(logits)[:,:,:,1]
+        # remove padded parts 
+        padded = tf.cast(tf.not_equal(labels, padding_val), tf.int32)
+        preds = tf.to_float(padded) * preds
+        labels = padded * labels
+        probe = tfcount(labels, 255)
+        addc(probe)
         # flat thee shit
         batch_size = logits.shape[0]
         preds = tf.reshape(preds, shape=[batch_size, -1])
@@ -93,7 +98,7 @@ def dice_coefficient(logits, labels, scope_name):
         dices = (1 + 2 * tf.reduce_sum(preds * labels, axis=1)) / (1 + tf.reduce_sum(preds, axis=1) + tf.reduce_sum(labels, axis=1))
         return tf.reduce_mean(dices)
 
-def focal_loss(labels, logits, scope_name, gamma=2.0, alpha=4.0):
+def focal_loss(labels, logits, scope_name=None, gamma=2.0, alpha=4.0, padding_val=255):
     """
     focal loss for multi-classification
     FL(p_t)=-alpha(1-p_t)^{gamma}ln(p_t)
@@ -115,8 +120,17 @@ def focal_loss(labels, logits, scope_name, gamma=2.0, alpha=4.0):
     ce = -labels * tf.log(model_out)
     weight = tf.pow(1 - model_out, gamma)
     fl = alpha * weight * ce
+    # remove padding vals
+    notpadded = tf.cast(tf.not_equal(labels, padding_val), tf.float32)
+    fl = fl * notpadded
     reduced_fl = tf.reduce_mean(tf.reduce_sum(fl, axis=-1))
     return reduced_fl
+
+def tfcount(labels, val, name='count'):
+    return tf.reduce_sum(tf.cast(tf.equal(labels, val), tf.int32), name=name)
+
+def addc(probe):
+    tf.add_to_collection('debugging', probe)
 
 # experiment different types of losses
 def my_mixed_loss(scales_to_logits,
@@ -132,8 +146,10 @@ def my_mixed_loss(scales_to_logits,
   if labels is None:
     raise ValueError('No label for softmax cross entropy loss.')
   # TODO remove this probe ondce code cmoplete
-  probe1 = tf.reduce_max(labels, name='labels_max')
-  tf.add_to_collection('debugging', probe1)
+  #probe1 = tfcount(labels, 1, 'count1')
+  #probe2 = tfcount(labels, 255, 'count255')
+  #addc(probe1)  
+  #addc(probe2)
 
   for scale, logits in six.iteritems(scales_to_logits):
     loss_scope = None
@@ -155,7 +171,7 @@ def my_mixed_loss(scales_to_logits,
           align_corners=True)
 
     # caculate dice coefficient
-    dice = dice_coefficient(logits, scaled_labels, loss_scope)
+    dice = dice_coefficient(logits, tf.squeeze(scaled_labels), loss_scope)
     dice_loss = tf.identity(-tf.log(dice), 'dice_coef')
 
     flattened_labels = tf.reshape(scaled_labels, shape=[-1])
@@ -175,15 +191,16 @@ def my_mixed_loss(scales_to_logits,
         scope=loss_scope,
         loss_collection=None)    # do not let this shit add otherwise it'll be collected by trainer
     # # focal loss
-    # f_losses = focal_loss(one_hot_labels, logits_flattened)
-    # f_losses = tf.identity(f_losses, 'focal loss')
+    f_losses = focal_loss(one_hot_labels, logits_flattened)
+    f_losses = tf.identity(f_losses, 'focal_loss')
 
 
     # bce ~ 0.25 ~ 1.5,   dice ~ 0.8
 
     # the funny shit is the deployment module will aggregate all losses you added by a simple sum
     # so you gotta make sure you have all loss individually defined well here
-    slim.losses.add_loss(bce_loss)
+    #slim.losses.add_loss(bce_loss)
+    slim.losses.add_loss(f_losses)
     slim.losses.add_loss(dice_loss)   # log the dice to smooth its gradient: https://www.kaggle.com/iafoss/unet34-dice-0-87/notebook
 
 def get_model_init_fn(train_logdir,

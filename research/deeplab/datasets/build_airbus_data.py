@@ -40,8 +40,6 @@ def _convert_dataset(dataset_split):
     masks_rle = pd.read_csv(FLAGS.csv_file)
 
     filenames = os.listdir(FLAGS.image_folder)
-    # random shuffle images 
-    random.shuffle(filenames)
 
     # perform train-val split based the same constant seed number
     train_imgs, val_imgs = train_test_split(filenames, test_size=VAL_SIZE, random_state=_SEED)
@@ -101,16 +99,16 @@ def _convert_dataset(dataset_split):
                 img_height, img_width = image_reader.read_image_dims(image_data)
 
                 # start parsing masks
-                seg_data = np.zeros((768, 768))
+                seg_data = np.zeros((768, 768), dtype=np.uint8)
 
                 for m in mask:
                     seg_data += rle_decode(m)
                 # save the shit to a temporary location
                 Image.fromarray(seg_data, mode='L').save('/tmp/tmp.png')
                 seg_data_png = tf.gfile.FastGFile('/tmp/tmp.png', 'rb').read()
-                seg_png_img = label_reader.decode_image(seg_data_png)
+                seg_png_img = label_reader.decode_image(seg_data_png).squeeze()
                 # make sure label map is not lossy during this conversion
-                np.testing.assert_array_equal(seg_png_img, seg_data_png)
+                np.testing.assert_array_equal(seg_png_img, seg_data, "{} vs {}".format(seg_png_img.max(), seg_data.max()))
 
                 seg_height, seg_width = label_reader.read_image_dims(seg_data_png)
                 height, width = 768, 768

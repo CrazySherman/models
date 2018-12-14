@@ -110,8 +110,8 @@ _ADE20K_INFORMATION = DatasetDescriptor(
 
 _AIRBUS_INFORMATION = DatasetDescriptor(
     splits_to_sizes={
-        'train': 42354,
-        'val': 229
+        'train': 42347,
+        'val': 211
     },
     num_classes=2,
     ignore_label=255
