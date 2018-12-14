@@ -318,9 +318,6 @@ def main(unused_argv):
     for loss in tf.get_collection(tf.GraphKeys.LOSSES, first_clone_scope):
       summaries.add(tf.summary.scalar('losses/%s' % loss.op.name, loss))
 
-    for probe in tf.get_collection("debugging"):
-      slim.summaries.add_scalar_summary(probe, name=probe.op.name,  print_summary=True)
-
     # Build the optimizer based on the device specification.
     with tf.device(config.optimizer_device()):
       learning_rate = train_utils.get_model_learning_rate(
@@ -330,6 +327,8 @@ def main(unused_argv):
           FLAGS.slow_start_step, FLAGS.slow_start_learning_rate)
       optimizer = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
       summaries.add(tf.summary.scalar('learning_rate', learning_rate))
+      # add the shit to debugging breakpoint to print out
+      train_utils.addc(learning_rate)
 
     startup_delay_steps = FLAGS.task * FLAGS.startup_delay_steps
     for variable in slim.get_model_variables():
@@ -357,6 +356,10 @@ def main(unused_argv):
       update_op = tf.group(*update_ops)
       with tf.control_dependencies([update_op]):
         train_tensor = tf.identity(total_loss, name='train_op')
+
+    # add slim summaries to print out debugging breakpoints
+    for probe in tf.get_collection("debugging"):
+      slim.summaries.add_scalar_summary(probe, name=probe.op.name,  print_summary=True)
 
     # Add the summaries from the first clone. These contain the summaries
     # created by model_fn and either optimize_clones() or _gather_clone_loss().

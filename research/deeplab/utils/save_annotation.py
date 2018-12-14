@@ -41,8 +41,14 @@ def save_annotation(label,
     colormap_type: Colormap type for visualization.
   """
   # Add colormap for visualizing the prediction.
-  if add_colormap:
-    colored_label = get_dataset_colormap.label_to_color_image(
+  print('using colormap type: ', colormap_type)
+  if add_colormap:    
+    if colormap_type == 'my_colormap':
+      print('image status: {} postive vs {} negative'.format(np.sum(label==1), np.sum(label==0)))
+      colored_label = np.zeros(label.shape)
+      colored_label[label == 1] = 255   # set positive predictions to white background
+    else:
+      colored_label = get_dataset_colormap.label_to_color_image(
         label, colormap_type)
   else:
     colored_label = label
