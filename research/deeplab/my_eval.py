@@ -24,7 +24,7 @@ from deeplab import common
 from deeplab import model
 from deeplab.datasets import segmentation_dataset
 from deeplab.utils import input_generator
-from PIL import Image
+import imageio
 import numpy as np
 
 slim = tf.contrib.slim
@@ -110,6 +110,7 @@ def main(unused_argv):
         crop_size=FLAGS.eval_crop_size,
         atrous_rates=FLAGS.atrous_rates,
         output_stride=FLAGS.output_stride)
+    origin_images = samples[common.ORIGINAL_IMAGE]
 
     if tuple(FLAGS.eval_scales) == (1.0,):
       tf.logging.info('Performing single-scale test.')
@@ -156,11 +157,14 @@ def main(unused_argv):
       coord = tf.train.Coordinator()
       thread = tf.train.start_queue_runners(sess=sess,coord=coord)
       for batch_id in range(num_batches):
-        res = sess.run(masks)
-        res = res.astype(np.uint8) 
-        Image.fromarray(res[0].squeeze(), mode='L').save(os.path.join(FLAGS.eval_logdir, '{}.png').format(batch_id))
+        images, res = sess.run([origin_images, masks])
+        res = res.astype(np.uint8)
+        res[res != 1] = 0
+        res = res * 255
+        imageio.imwrite(os.path.join(FLAGS.eval_logdir, 'orig_{}.jpg').format(batch_id), images[0])
+        imageio.imwrite(os.path.join(FLAGS.eval_logdir, '{}.png').format(batch_id), res[0])
 
-        print('Metric: sum has value: %f' % res.sum())
+        print('Metric: mask sum has value: %f' % res.sum())
 
 
 
