@@ -88,7 +88,7 @@ def main(unused_argv):
   dataset = segmentation_dataset.get_dataset(
       FLAGS.dataset, FLAGS.eval_split, dataset_dir=FLAGS.dataset_dir)
 
-  tf.gfile.MakeDirs(FLAGS.eval_logdir)
+  #tf.gfile.MakeDirs(FLAGS.eval_logdir)
   tf.logging.info('Evaluating on %s set', FLAGS.eval_split)
 
   with tf.Graph().as_default():
@@ -143,9 +143,8 @@ def main(unused_argv):
         labels, dataset.num_classes - 1)), 1)
     labels = tf.cast(tf.gather(labels, indices), tf.int32)
     predictions = tf.gather(predictions, indices)
-    value_ops, update_ops = slim.metrics.aggregate_metrics()
     names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
-      "eval/mean_iou": slim.metrics.mean_iou(predictions, labels, dataset.num_classes, weights=weights)
+      "eval/mean_iou": slim.metrics.streaming_mean_iou(predictions, labels, dataset.num_classes, weights=weights)
     })
     num_batches = int(
         math.ceil(dataset.num_samples / float(FLAGS.eval_batch_size)))
@@ -158,10 +157,10 @@ def main(unused_argv):
       for batch_id in range(num_batches):
         #images, res = sess.run([origin_images, masks])
         # this shit aggragate all the tmp metric values
-        sess.run(names_to_updates.values())
+        sess.run(list(names_to_updates.values()))
 
       # this shit compute the final aggregated metric value
-      metric_values = sess.run(names_to_values.values())
+      metric_values = sess.run(list(names_to_values.values()))
 
       for metric, value in zip(names_to_values.keys(), metric_values):
         print('Metric %s has value: %f' % (metric, value))
@@ -170,6 +169,6 @@ def main(unused_argv):
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('checkpoint_dir')
-  flags.mark_flag_as_required('eval_logdir')
+  #flags.mark_flag_as_required('eval_logdir')
   flags.mark_flag_as_required('dataset_dir')
   tf.app.run()
