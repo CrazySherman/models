@@ -31,7 +31,7 @@ tf.app.flags.DEFINE_string('csv_file',
 """
 _NUM_SHARDS = 50
 _SEED = 97
-VAL_SIZE = 1000
+VAL_SIZE = 5000
 FILTER_NOSHIP = True
 
 

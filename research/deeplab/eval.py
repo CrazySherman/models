@@ -18,13 +18,13 @@ See model.py for more details and usage.
 """
 
 import math
+import sys
 import six
 import tensorflow as tf
 from deeplab import common
 from deeplab import model
 from deeplab.datasets import segmentation_dataset
-from deeplab.utils import input_generator
-
+from deeplab.utils import input_generator, train_utils
 slim = tf.contrib.slim
 
 flags = tf.app.flags
@@ -141,30 +141,23 @@ def main(unused_argv):
     
     indices = tf.squeeze(tf.where(tf.less_equal(
         labels, dataset.num_classes - 1)), 1)
-    labels = tf.cast(tf.gather(labels, indices), tf.int32)
+    labels = tf.cast(tf.gather(labels, indices), tf.int64)
     predictions = tf.gather(predictions, indices)
-    names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
-      "eval/mean_iou": slim.metrics.streaming_mean_iou(predictions, labels, dataset.num_classes, weights=weights)
-    })
+    # this shit doesn't give consistent correct results
+    #names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
+    #  "eval/mean_iou": slim.metrics.streaming_mean_iou(predictions, labels, dataset.num_classes, weights=weights)
+    #})
+    my_metrics = train_utils.my_miou(predictions, labels)
+    summary_ops = tf.print(my_metrics, output_stream=sys.stderr)
     num_batches = int(
         math.ceil(dataset.num_samples / float(FLAGS.eval_batch_size)))
-    results = []
-    with tf.Session() as sess:
-      ini_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-      sess.run(ini_op)
-      coord = tf.train.Coordinator()
-      thread = tf.train.start_queue_runners(sess=sess,coord=coord)
-      for batch_id in range(num_batches):
-        #images, res = sess.run([origin_images, masks])
-        # this shit aggragate all the tmp metric values
-        sess.run(list(names_to_updates.values()))
-
-      # this shit compute the final aggregated metric value
-      metric_values = sess.run(list(names_to_values.values()))
-
-      for metric, value in zip(names_to_values.keys(), metric_values):
-        print('Metric %s has value: %f' % (metric, value))
-
+    slim.evaluation.evaluation_loop(
+        master=FLAGS.master,
+        checkpoint_dir=FLAGS.checkpoint_dir,
+        logdir=FLAGS.eval_logdir,
+        num_evals=num_batches,
+        eval_op=summary_ops,
+        eval_interval_secs=FLAGS.eval_interval_secs) 
 
 
 if __name__ == '__main__':

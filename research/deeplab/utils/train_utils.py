@@ -84,13 +84,17 @@ def dice_coefficient(logits, labels, scope_name, padding_val=255):
         labels: [batch_size * img_height * img_width]
     """
     with tf.name_scope(scope_name, 'dice_coef', [logits, labels]) as scope:
-        preds = tf.nn.softmax(logits)[:,:,:,1]
+        sm = tf.nn.softmax(logits)
+        preds = sm[:,:,:,1]
         # remove padded parts 
         padded = tf.cast(tf.not_equal(labels, padding_val), tf.int32)
         preds = tf.to_float(padded) * preds
         labels = padded * labels
-        probe = tfcount(labels, 255)
-        addc(probe)
+        probe = tf.argmax(sm, axis=-1)
+        probe1 = tfcount(probe, 1, 'count1')
+        probe2 = tfcount(probe, 0, 'count0')
+        addc(probe1)
+        addc(probe2)
         # flat thee shit
         batch_size = logits.shape[0]
         preds = tf.reshape(preds, shape=[batch_size, -1])
@@ -98,7 +102,7 @@ def dice_coefficient(logits, labels, scope_name, padding_val=255):
         dices = (1 + 2 * tf.reduce_sum(preds * labels, axis=1)) / (1 + tf.reduce_sum(preds, axis=1) + tf.reduce_sum(labels, axis=1))
         return tf.reduce_mean(dices)
 
-def focal_loss(labels, logits, scope_name=None, gamma=2.0, alpha=4.0, padding_val=255):
+def focal_loss(labels, logits, scope_name=None, gamma=5, alpha=10, padding_val=255):
     """
     focal loss for multi-classification
     FL(p_t)=-alpha(1-p_t)^{gamma}ln(p_t)
@@ -202,6 +206,25 @@ def my_mixed_loss(scales_to_logits,
     #slim.losses.add_loss(bce_loss)
     slim.losses.add_loss(f_losses)
     slim.losses.add_loss(dice_loss)   # log the dice to smooth its gradient: https://www.kaggle.com/iafoss/unet34-dice-0-87/notebook
+
+def my_miou(predictions, labels):
+  """Calculates mean iou ops, the tf.metrics.mean_iou is confusing and had issues when using it
+  Args:
+    predictions: [batch, num_bits], 0/1 masks
+    labels: [batch, num_bits], 0/1 masks.
+  
+  Returns:
+    ops that returns a mean_iou value for a single class, in this case, the ship class
+    we do not calculates miou for background class cuz that's obviously close to 1 
+  """
+  assert_op_pred = tf.Assert(tf.less_equal(tf.reduce_max(predictions), 1), [predictions])
+  assert_op_label = tf.Assert(tf.less_equal(tf.reduce_max(labels), 1), [labels])
+
+  with tf.control_dependencies([assert_op_label, assert_op_pred]):
+    return tf.reduce_mean(1 + 2 * tf.reduce_sum(predictions * labels, axis=-1)) / (1 + tf.reduce_sum(predictions, axis=-1) + tf.reduce_sum(labels, axis=-1))
+
+
+
 
 def get_model_init_fn(train_logdir,
                       tf_initial_checkpoint,
