@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import math
 import os, sys
-import cv2
 import random
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
@@ -53,11 +52,10 @@ def _extract_image(filename):
     filename: The path to an airbus images file.
 
     Returns:
-    A numpy array of shape [height, width, channels].
+    A binary format of image jpg string
     """
     # print('Extracting images from: ', filename)
-    im = cv2.imread(filename, cv2.IMREAD_COLOR)
-    return im
+    return tf.gfile.FastGFile(image_filename, 'rb').read()
 
 
 def _extract_label(imageId):
@@ -110,10 +108,10 @@ def _convert_dataset(dataset_split):
                         sys.stdout.flush()
                         image_filename = os.path.join(FLAGS.image_folder, filenames[i])
                         image_id = filenames[i]
-                        img = _extract_image(image_filename)
+                        img_data = _extract_image(image_filename)
                         label = _extract_label(image_id)
-                        png_string = sess.run(encoded_png, feed_dict={image: img})
-                        example = dataset_utils.image_to_tfexample(png_string, 'png'.encode(), _IMAGE_SIZE, _IMAGE_SIZE, label)
+                        # png_string = sess.run(encoded_png, feed_dict={image: img})
+                        example = dataset_utils.image_to_tfexample(img_data, 'jpeg'.encode(), _IMAGE_SIZE, _IMAGE_SIZE, label)
                         tfrecord_writer.write(example.SerializeToString())
 
     print('Finished processing set: ', dataset_split, ' coverted images: ', num_images)
