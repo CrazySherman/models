@@ -141,8 +141,8 @@ def main(unused_argv):
     
     indices = tf.squeeze(tf.where(tf.less_equal(
         labels, dataset.num_classes - 1)), 1)
-    labels = tf.cast(tf.gather(labels, indices), tf.int64)
-    predictions = tf.gather(predictions, indices)
+    labels = tf.cast(tf.gather(labels, indices), tf.int32)
+    predictions = tf.cast(tf.gather(predictions, indices), tf.int32)
     # this shit doesn't give consistent correct results
     #names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
     #  "eval/mean_iou": slim.metrics.streaming_mean_iou(predictions, labels, dataset.num_classes, weights=weights)

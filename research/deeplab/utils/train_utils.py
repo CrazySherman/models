@@ -221,8 +221,9 @@ def my_miou(predictions, labels):
   assert_op_label = tf.Assert(tf.less_equal(tf.reduce_max(labels), 1), [labels])
 
   with tf.control_dependencies([assert_op_label, assert_op_pred]):
-    return tf.reduce_mean(1 + 2 * tf.reduce_sum(predictions * labels, axis=-1)) / (1 + tf.reduce_sum(predictions, axis=-1) + tf.reduce_sum(labels, axis=-1))
-
+    nom = tf.reduce_mean(1 + 2 * tf.reduce_sum(predictions * labels, axis=-1)) 
+    denom = 1 + tf.reduce_sum(predictions, axis=-1) + tf.reduce_sum(labels, axis=-1)
+    return nom/denom
 
 
 

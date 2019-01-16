@@ -55,7 +55,7 @@ def _extract_image(filename):
     A binary format of image jpg string
     """
     # print('Extracting images from: ', filename)
-    return tf.gfile.FastGFile(image_filename, 'rb').read()
+    return tf.gfile.FastGFile(filename, 'rb').read()
 
 
 def _extract_label(imageId):
