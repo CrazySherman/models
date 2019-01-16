@@ -273,6 +273,11 @@ def main(unused_argv):
 
       # Define the model and create clones.
       model_fn = _build_deeplab
+      # print the number of parameters for the model
+      print(tf.trainable_variables())
+      print('[DEBUGGING]::the number of parameters: ', np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
+
+
       model_args = (inputs_queue, {
           common.OUTPUT_TYPE: dataset.num_classes
       }, dataset.ignore_label)
