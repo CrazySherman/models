@@ -102,6 +102,49 @@ def dice_coefficient(logits, labels, scope_name, padding_val=255):
         dices = (1 + 2 * tf.reduce_sum(preds * labels, axis=1)) / (1 + tf.reduce_sum(preds, axis=1) + tf.reduce_sum(labels, axis=1))
         return tf.reduce_mean(dices)
 
+# def bbox_classifier(fea_map, labels, scope_name):
+#   """Args:
+#       fea_map: [N * height * width * num_classes]
+#       labels: [N]
+#     Return:
+#       classifier logits [N * 2]
+#   """
+#     tf.nn.Conv2d(3)
+#     tf.nn.Conv2d(3)
+#     tf.nn.relu()
+#     tf.nn.Conv2d(1)
+#     return tf.reduce_sum()
+
+
+# # bbox loss
+# def bbox_loss(logits, labels, scope_name, padding_val=None):
+#     """Args
+#         logits: [batch_size * img_height * img_width * num_classes]
+#         labels: [batch_size * img_height * img_width]
+#       Return: loss
+#     """
+#     with tf.name_scope(scope_name, 'bbox_classifier', [fea_map, labels]) as scope:
+#       fea_map, labels = nms(logits, labels)
+#       classifier_logits = bbox_classifier(fea_map, logits)
+#       return tf.nn.add_softmax_cross_entropy_loss(classifier_logits)
+
+def negative_sampling(labels, logits):
+    """Args:
+      negatively sample imbalanced masks,
+      inputs: labels and logits are flattened with shape [N, num_class], logits already softmaxed
+    Return:
+      sampled labels and logits tensor
+    """
+    # positive samples
+    pos_indices = tf.greater(logits[:,1], logits[:,0])
+
+    # negative samples
+    neg_indices = tf.greater(logits[:,0], logits[:,1])
+    # all_indices = tf.cat([pos_indices, tf.random(neg_indices)])
+    all_indices = pos_indices  # this is targeting false positive only
+
+    return tf.boolean_mask(labels, all_indices), tf.boolean_mask(logits, all_indices)
+
 def focal_loss(labels, logits, scope_name=None, gamma=5, alpha=10, padding_val=255):
     """
     focal loss for multi-classification
@@ -120,6 +163,8 @@ def focal_loss(labels, logits, scope_name=None, gamma=5, alpha=10, padding_val=2
     #with name_scope(scope_name, 'focal_loss', )
     epsilon = 1.e-9
     logits = tf.nn.softmax(logits)    
+    logits, labels = negative_sampling(labels, logits)
+    addc(logits.shape)
     model_out = logits + epsilon
     ce = -labels * tf.log(model_out)
     weight = tf.pow(1 - model_out, gamma)
