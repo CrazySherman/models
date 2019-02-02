@@ -25,7 +25,7 @@ from deeplab.datasets import segmentation_dataset
 from deeplab.utils import input_generator
 from deeplab.utils import train_utils
 from deployment import model_deploy
-
+import numpy as np
 slim = tf.contrib.slim
 
 prefetch_queue = slim.prefetch_queue

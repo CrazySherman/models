@@ -184,7 +184,7 @@ def negative_sampling(labels, logits):
 
     return tf.boolean_mask(labels, all_indices), tf.boolean_mask(logits, all_indices)
 
-def focal_loss(labels, logits, scope_name=None, gamma=5, alpha=10, padding_val=255):
+def focal_loss(labels, logits, ohem=False, scope_name=None, gamma=5, alpha=10, padding_val=255):
     """
     focal loss for multi-classification
     FL(p_t)=-alpha(1-p_t)^{gamma}ln(p_t)
@@ -202,8 +202,8 @@ def focal_loss(labels, logits, scope_name=None, gamma=5, alpha=10, padding_val=2
     #with name_scope(scope_name, 'focal_loss', )
     epsilon = 1.e-9
     logits = tf.nn.softmax(logits)    
-    logits, labels = negative_sampling(labels, logits)
-    addc(logits.shape)
+    if ohem:
+        logits, labels = negative_sampling(labels, logits)
     model_out = logits + epsilon
     ce = -labels * tf.log(model_out)
     weight = tf.pow(1 - model_out, gamma)
@@ -227,15 +227,14 @@ def roi_dice(logits, labels, scope_name=None):
 
 
 def lovasz_loss(labels, logits, scope_name=None):
-  """
+    """
     lovasz loss: https://github.com/bermanmaxim/LovaszSoftmax
     :params logits: [batch_size * img_height * img_width * num_classes]
     :params labels: [batch_size * img_height * img_width]
     :return loss value scalar
-  """
+    """
     IGNORE = 255
-    sm = tf.nn.softmax(logits)
-    preds = sm[:,:,:,1]
+    preds = logits[:,:,:,1] - logits[:,:,:,0]
     ## TODO refactor with python annotaiton @define_scope
     with tf.variable_scope(scope_name or "lovasz_loss"):
       loss = L.lovasz_hinge(preds, labels, ignore=IGNORE, per_image=True)
@@ -286,32 +285,40 @@ def my_mixed_loss(scales_to_logits,
           align_corners=True)
 
     # caculate dice coefficient
-    dice = dice_coefficient(logits, tf.squeeze(scaled_labels), loss_scope)
-    dice_loss = tf.identity(-tf.log(dice), 'dice_coef')
+    # dice = dice_coefficient(logits, tf.squeeze(scaled_labels), loss_scope)
+    # dice_loss = tf.identity(-tf.log(dice), 'dice_coef')
+    # slim.losses.add_loss(dice_loss)   # log the dice to smooth its gradient: https://www.kaggle.com/iafoss/unet34-dice-0-87/notebook
 
     flattened_labels = tf.reshape(scaled_labels, shape=[-1])
     # weighted loss coefficient? 
     # loss_weight = tf.to_float(scaled_labels + 1)    # SET pos:neg loss contrib to 2: 1
-    loss_weights = tf.to_float(tf.not_equal(flattened_labels,ignore_label)) * loss_weight
 
-    one_hot_labels = slim.one_hot_encoding(
-        flattened_labels, num_classes, on_value=1.0, off_value=0.0)
     logits_flattened = tf.reshape(logits, shape=[-1, num_classes])
-
+    sampled_labels, sampled_logits = negative_sampling(flattened_labels, logits_flattened)
     # bce loss
-    bce_loss = 1e-3 * tf.losses.softmax_cross_entropy(
-        one_hot_labels,
-        logits_flattened,
-        weights=loss_weights,
-        scope=loss_scope,
-        loss_collection=None)    # do not let this shit add otherwise it'll be collected by trainer
+    #loss_weights = tf.to_float(tf.not_equal(sampled_labels,ignore_label)) * loss_weight
+    one_hot_labels = slim.one_hot_encoding(sampled_labels, num_classes, on_value=1.0, off_value=0.0)
+    #bce_loss = 1e-3 * tf.losses.softmax_cross_entropy(
+    #    one_hot_labels,
+    #    sampled_logits,
+    #    weights=loss_weights,
+    #    scope=loss_scope,
+    #    loss_collection=None)    # do not let this shit add otherwise it'll be collected by trainer
+    #slim.losses.add_loss(bce_loss)
+    
+
+
     # # focal loss
     f_losses = focal_loss(one_hot_labels, logits_flattened)
     f_losses = tf.identity(f_losses, 'focal_loss')
 
+   # slim.losses.add_loss(f_losses)
+
     ## lovalsz loss https://github.com/bermanmaxim/LovaszSoftmax
+    # lovalsz softmax is considered a replacement of dice loss
     l_loss = lovasz_loss(scaled_labels, logits)
-    l_loss = tf.identity(l_loss, 'lovasz loss')
+    l_loss = tf.identity(l_loss, 'lovasz_loss')
+    slim.losses.add_loss(l_loss)
 
 
     roi_loss = roi_dice(logits, tf.squeeze(scaled_labels), loss_scope)
@@ -327,7 +334,6 @@ def my_mixed_loss(scales_to_logits,
     # slim.losses.add_loss(l_loss)
 
     slim.losses.add_loss(roi_loss)
-
 
 def my_miou(predictions, labels):
   """Calculates mean iou ops, the tf.metrics.mean_iou is confusing and had issues when using it
