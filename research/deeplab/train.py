@@ -333,7 +333,7 @@ def main(unused_argv):
       optimizer = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
       summaries.add(tf.summary.scalar('learning_rate', learning_rate))
       # add the shit to debugging breakpoint to print out
-      train_utils.addc(learning_rate)
+      train_utils.addc(tf.identity(learning_rate, 'learning_rate'))
 
     startup_delay_steps = FLAGS.task * FLAGS.startup_delay_steps
     for variable in slim.get_model_variables():

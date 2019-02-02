@@ -18,6 +18,7 @@ import six
 import sys
 import tensorflow as tf
 from deeplab.core import preprocess_utils
+import lovasz_losses_tf as L
 
 slim = tf.contrib.slim
 
@@ -95,7 +96,7 @@ def dice_coefficient(logits, labels, scope_name, padding_val=255):
         probe2 = tfcount(probe, 0, 'count0')
         addc(probe1)
         addc(probe2)
-        # flat thee shit
+        # flat thee shit, flat only per image do not flat per batch!!!
         batch_size = logits.shape[0]
         preds = tf.reshape(preds, shape=[batch_size, -1])
         labels = tf.reshape(tf.to_float(labels), shape=[batch_size, -1])
@@ -175,6 +176,21 @@ def focal_loss(labels, logits, scope_name=None, gamma=5, alpha=10, padding_val=2
     reduced_fl = tf.reduce_mean(tf.reduce_sum(fl, axis=-1))
     return reduced_fl
 
+def lovasz_loss(labels, logits, scope_name=None):
+  """
+    lovasz loss: https://github.com/bermanmaxim/LovaszSoftmax
+    :params logits: [batch_size * img_height * img_width * num_classes]
+    :params labels: [batch_size * img_height * img_width]
+    :return loss value scalar
+  """
+    IGNORE = 255
+    sm = tf.nn.softmax(logits)
+    preds = sm[:,:,:,1]
+    ## TODO refactor with python annotaiton @define_scope
+    with tf.variable_scope(scope_name or "lovasz_loss"):
+      loss = L.lovasz_hinge(preds, labels, ignore=IGNORE, per_image=True)
+      return loss
+
 def tfcount(labels, val, name='count'):
     return tf.reduce_sum(tf.cast(tf.equal(labels, val), tf.int32), name=name)
 
@@ -243,6 +259,9 @@ def my_mixed_loss(scales_to_logits,
     f_losses = focal_loss(one_hot_labels, logits_flattened)
     f_losses = tf.identity(f_losses, 'focal_loss')
 
+    ## lovalsz loss https://github.com/bermanmaxim/LovaszSoftmax
+    l_loss = lovasz_loss(scaled_labels, logits)
+    l_loss = tf.identity(l_loss, 'lovasz loss')
 
     # bce ~ 0.25 ~ 1.5,   dice ~ 0.8
 
@@ -250,7 +269,9 @@ def my_mixed_loss(scales_to_logits,
     # so you gotta make sure you have all loss individually defined well here
     #slim.losses.add_loss(bce_loss)
     slim.losses.add_loss(f_losses)
-    slim.losses.add_loss(dice_loss)   # log the dice to smooth its gradient: https://www.kaggle.com/iafoss/unet34-dice-0-87/notebook
+    # lovalsz softmax is considered a replacement of dice loss
+    # slim.losses.add_loss(dice_loss)   # log the dice to smooth its gradient: https://www.kaggle.com/iafoss/unet34-dice-0-87/notebook
+    slim.losses.add_loss(l_loss)
 
 def my_miou(predictions, labels):
   """Calculates mean iou ops, the tf.metrics.mean_iou is confusing and had issues when using it
