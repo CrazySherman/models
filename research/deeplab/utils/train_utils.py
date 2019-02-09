@@ -19,9 +19,47 @@ import sys
 import tensorflow as tf
 from deeplab.core import preprocess_utils
 import lovasz_losses_tf as L
+from anchors import AnchorGenerator
 
 slim = tf.contrib.slim
+anchor_scales=[2, 4, 8, 16, 16]
+anchor_ratios=[0.5, 1.0, 2.0]
+anchor_base = 8
+anchor_generator = AnchorGenerator(anchor_base, anchor_scales, anchor_ratios)
+thresh = 0.01    #?
 
+
+def box_iou(X):
+    """Args:
+        features: A tensor of size [batch, features_height, features_width], float point 0~1 logits
+        labels:  same dim, 0/1 int32
+    Return:
+        the IoU per Box mean per batch
+    """
+    features, labels = X[0], X[1]
+    print('feature map tensor shape is: ', features.shape)
+    all_anchors = anchor_generator.grid_anchors(features.shape, stride=anchor_base)   # N by 4
+#     unpacked_anchors = tf.unstack(all_anchors)
+#     print('{} numbers of anchors generated'.format(len(unpacked_anchors)))
+#     print('generated anchors: ', unpacked_anchors)
+    def score_fn(anchor):
+        xmin, ymin, xmax, ymax = anchor[0], anchor[1], anchor[2], anchor[3]
+        label = labels[xmin:xmax, ymin:ymax]
+        return tf.reduce_sum(label) / tf.to_float((xmax - xmin + 1) * (ymax - ymin + 1))
+    def loss_fn(anchor):
+        xmin, xmax, ymin, ymax = anchor[0], anchor[1], anchor[2], anchor[3]
+        l = labels[xmin:xmax, ymin:ymax]
+        p = features[xmin:xmax, ymin:ymax]
+        l = tf.to_float(l)
+        return (1 + 2 * tf.reduce_sum(p * l)) / (1 + tf.reduce_sum(p) + tf.reduce_sum(l))
+        
+    
+    scores = tf.map_fn(score_fn, all_anchors, dtype=tf.float32)
+    selected_indices = tf.image.non_max_suppression(tf.to_float(all_anchors), scores, score_threshold=thresh, max_output_size=15)        
+    candidates = tf.gather(all_anchors, selected_indices)
+    dices = tf.map_fn(loss_fn, candidates, dtype=tf.float32)
+
+    return tf.reduce_mean(dices)
 
 def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
                                                   labels,
@@ -176,6 +214,18 @@ def focal_loss(labels, logits, scope_name=None, gamma=5, alpha=10, padding_val=2
     reduced_fl = tf.reduce_mean(tf.reduce_sum(fl, axis=-1))
     return reduced_fl
 
+def roi_dice(logits, labels, scope_name=None):
+  """
+    :params logits: [batch_size * img_height * img_width * num_classes]
+    :params labels: [batch_size * img_height * img_width]
+    :return loss value scalar
+  """
+    preds = tf.nn.softmax(logits)[:,:,:,1]
+    X = tf.stack([logits, labels], axis=1)
+    dices = tf.map_fn(box_iou, X)
+    return tf.reduce_mean(dices)
+
+
 def lovasz_loss(labels, logits, scope_name=None):
   """
     lovasz loss: https://github.com/bermanmaxim/LovaszSoftmax
@@ -263,15 +313,21 @@ def my_mixed_loss(scales_to_logits,
     l_loss = lovasz_loss(scaled_labels, logits)
     l_loss = tf.identity(l_loss, 'lovasz loss')
 
+
+    roi_loss = roi_dice(logits, tf.squeeze(scaled_labels), loss_scope)
+
     # bce ~ 0.25 ~ 1.5,   dice ~ 0.8
 
     # the funny shit is the deployment module will aggregate all losses you added by a simple sum
     # so you gotta make sure you have all loss individually defined well here
     #slim.losses.add_loss(bce_loss)
-    slim.losses.add_loss(f_losses)
+    # slim.losses.add_loss(f_losses)
     # lovalsz softmax is considered a replacement of dice loss
     # slim.losses.add_loss(dice_loss)   # log the dice to smooth its gradient: https://www.kaggle.com/iafoss/unet34-dice-0-87/notebook
-    slim.losses.add_loss(l_loss)
+    # slim.losses.add_loss(l_loss)
+
+    slim.losses.add_loss(roi_loss)
+
 
 def my_miou(predictions, labels):
   """Calculates mean iou ops, the tf.metrics.mean_iou is confusing and had issues when using it
@@ -290,7 +346,6 @@ def my_miou(predictions, labels):
     nom = tf.reduce_mean(1 + 2 * tf.reduce_sum(predictions * labels, axis=-1)) 
     denom = 1 + tf.reduce_sum(predictions, axis=-1) + tf.reduce_sum(labels, axis=-1)
     return nom/denom
-
 
 
 def get_model_init_fn(train_logdir,
