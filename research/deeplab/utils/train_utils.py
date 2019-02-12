@@ -40,6 +40,7 @@ def box_iou(X):
     features, labels = X[0], X[1]
     print('feature map tensor shape is: ', features.shape)
     all_anchors = anchor_generator.grid_anchors(features.shape, stride=anchor_base)   # N by 4
+
 #     unpacked_anchors = tf.unstack(all_anchors)
 #     print('{} numbers of anchors generated'.format(len(unpacked_anchors)))
 #     print('generated anchors: ', unpacked_anchors)
@@ -56,10 +57,12 @@ def box_iou(X):
         
     
     scores = tf.map_fn(score_fn, all_anchors, dtype=tf.float32)
+    addc(tf.reduce_max(scores, name='max_box_score'))
     selected_indices = tf.image.non_max_suppression(tf.to_float(all_anchors), scores, score_threshold=thresh, max_output_size=15)        
+    addc(tf.reduce_max(selected_indices, 'max_roi_idx'))
     candidates = tf.gather(all_anchors, selected_indices)
     dices = tf.map_fn(loss_fn, candidates, dtype=tf.float32)
-
+    addc(tf.reduce_mean(dices, 'roi_dice_single'))
     return tf.reduce_mean(dices)
 
 def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
