@@ -19,13 +19,12 @@ import sys
 import tensorflow as tf
 from deeplab.core import preprocess_utils
 import lovasz_losses_tf as L
-from anchors import AnchorGenerator
+from utils.anchors import AnchorGenerator
 
 slim = tf.contrib.slim
 anchor_scales=[2, 4, 8, 16, 16]
 anchor_ratios=[0.5, 1.0, 2.0]
 anchor_base = 8
-anchor_generator = AnchorGenerator(anchor_base, anchor_scales, anchor_ratios)
 thresh = 0.01    #?
 
 
@@ -36,6 +35,8 @@ def box_iou(X):
     Return:
         the IoU per Box mean per batch
     """
+
+    anchor_generator = AnchorGenerator(anchor_base, anchor_scales, anchor_ratios)
     features, labels = X[0], X[1]
     print('feature map tensor shape is: ', features.shape)
     all_anchors = anchor_generator.grid_anchors(features.shape, stride=anchor_base)   # N by 4
@@ -215,13 +216,13 @@ def focal_loss(labels, logits, ohem=False, scope_name=None, gamma=5, alpha=10, p
     return reduced_fl
 
 def roi_dice(logits, labels, scope_name=None):
-  """
+    """
     :params logits: [batch_size * img_height * img_width * num_classes]
     :params labels: [batch_size * img_height * img_width]
     :return loss value scalar
-  """
+    """
     preds = tf.nn.softmax(logits)[:,:,:,1]
-    X = tf.stack([logits, labels], axis=1)
+    X = tf.stack([preds, tf.to_float(labels)], axis=1)
     dices = tf.map_fn(box_iou, X)
     return tf.reduce_mean(dices)
 
