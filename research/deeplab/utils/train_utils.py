@@ -22,10 +22,11 @@ import lovasz_losses_tf as L
 from utils.anchors import AnchorGenerator
 
 slim = tf.contrib.slim
-anchor_scales=[2, 4, 8, 16, 16]
-anchor_ratios=[0.5, 1.0, 2.0]
-anchor_base = 8
-thresh = 0.01    #?
+ANCHOR_SCALES=[2, 4, 8, 16]
+ANCHOR_RATIOS=[0.5, 1.0, 2.0]
+ANCHOR_BASE = 8
+THRESH = 0.1    #?
+NMS_MAX_OUTPUT=15
 
 
 def box_iou(X):
@@ -36,10 +37,10 @@ def box_iou(X):
         the IoU per Box mean per batch
     """
 
-    anchor_generator = AnchorGenerator(anchor_base, anchor_scales, anchor_ratios)
+    anchor_generator = AnchorGenerator(ANCHOR_BASE, ANCHOR_SCALES, ANCHOR_RATIOS)
     features, labels = X[0], X[1]
     print('feature map tensor shape is: ', features.shape)
-    all_anchors = anchor_generator.grid_anchors(features.shape, stride=anchor_base)   # N by 4
+    all_anchors = anchor_generator.grid_anchors(features.shape, stride=ANCHOR_BASE)   # N by 4
 
 #     unpacked_anchors = tf.unstack(all_anchors)
 #     print('{} numbers of anchors generated'.format(len(unpacked_anchors)))
@@ -57,12 +58,12 @@ def box_iou(X):
         
     
     scores = tf.map_fn(score_fn, all_anchors, dtype=tf.float32)
-    addc(tf.reduce_max(scores, name='max_box_score'))
-    selected_indices = tf.image.non_max_suppression(tf.to_float(all_anchors), scores, score_threshold=thresh, max_output_size=15)        
-    addc(tf.reduce_max(selected_indices, 'max_roi_idx'))
+    #addc(tf.reduce_max(scores, name='max_box_score'))
+    selected_indices = tf.image.non_max_suppression(tf.to_float(all_anchors), scores, score_threshold=THRESH, max_output_size=NMS_MAX_OUTPUT)        
+    #addc(tf.reduce_max(selected_indices, name='max_roi_idx'))
     candidates = tf.gather(all_anchors, selected_indices)
     dices = tf.map_fn(loss_fn, candidates, dtype=tf.float32)
-    addc(tf.reduce_mean(dices, 'roi_dice_single'))
+    #addc(tf.reduce_mean(dices, name='roi_dice_single'))
     return tf.reduce_mean(dices)
 
 def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
@@ -325,7 +326,7 @@ def my_mixed_loss(scales_to_logits,
     slim.losses.add_loss(l_loss)
 
 
-    roi_loss = roi_dice(logits, tf.squeeze(scaled_labels), loss_scope)
+    roi_loss = tf.identity(-tf.log(roi_dice(logits, tf.squeeze(scaled_labels), loss_scope)), 'roi_dice_loss')
 
     # bce ~ 0.25 ~ 1.5,   dice ~ 0.8
 
