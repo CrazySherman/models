@@ -273,10 +273,6 @@ def main(unused_argv):
 
       # Define the model and create clones.
       model_fn = _build_deeplab
-      # print the number of parameters for the model
-      print(tf.trainable_variables())
-      print('[DEBUGGING]::the number of parameters: ', np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
-
 
       model_args = (inputs_queue, {
           common.OUTPUT_TYPE: dataset.num_classes
@@ -359,6 +355,10 @@ def main(unused_argv):
           grads_and_vars, global_step=global_step)
       update_ops.append(grad_updates)
       update_op = tf.group(*update_ops)
+      # print the number of parameters for the model
+      print(tf.trainable_variables())
+      print('[DEBUGGING]::the number of parameters: ', np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()]))
+
       with tf.control_dependencies([update_op]):
         train_tensor = tf.identity(total_loss, name='train_op')
 

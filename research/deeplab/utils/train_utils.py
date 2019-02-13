@@ -22,49 +22,58 @@ import lovasz_losses_tf as L
 from utils.anchors import AnchorGenerator
 
 slim = tf.contrib.slim
-ANCHOR_SCALES=[2, 4, 8, 16]
+# this depends on output mask, this value set is targeting 100 * 100
+ANCHOR_SCALES=[2, 4, 8]
 ANCHOR_RATIOS=[0.5, 1.0, 2.0]
-ANCHOR_BASE = 8
-THRESH = 0.1    #?
-NMS_MAX_OUTPUT=15
+ANCHOR_BASE = 16
+ANCHOR_STRIDE = 16
+THRESH = 0.01 
+MAX_OUTPUT_SIZE = 15
 
-
-def box_iou(X):
-    """Args:
-        features: A tensor of size [batch, features_height, features_width], float point 0~1 logits
-        labels:  same dim, 0/1 int32
-    Return:
-        the IoU per Box mean per batch
-    """
-
-    anchor_generator = AnchorGenerator(ANCHOR_BASE, ANCHOR_SCALES, ANCHOR_RATIOS)
-    features, labels = X[0], X[1]
-    print('feature map tensor shape is: ', features.shape)
-    all_anchors = anchor_generator.grid_anchors(features.shape, stride=ANCHOR_BASE)   # N by 4
-
+def box_iou(features, labels):
+  """Args:
+      features: A tensor of size [batch, features_height, features_width], float point 0~1 logits
+      labels:  same dim, 0/1 int32
+  Return:
+      the IoU per Box mean per batch
+  """
+  anchor_generator = AnchorGenerator(ANCHOR_BASE, ANCHOR_SCALES, ANCHOR_RATIOS)
+  labels = tf.to_float(labels)
+  print('feature map tensor shape is: ', features.shape)
+  anchors = anchor_generator.grid_anchors(features.shape[1:], stride=ANCHOR_STRIDE)   # N by 4
+  batch_size = features.shape[0]
+  print('batch size: ', batch_size)
+  anchor_nums = anchors.shape[0]
+  print('number of anchors per img: ', anchor_nums)
+  all_anchors = tf.tile(anchors, multiples=[batch_size, 1])
+  bids = tf.range(batch_size)
+  bids = tf.broadcast_to(bids, (batch_size, anchor_nums))
+  bids = tf.reshape(bids, shape=[-1])
+  bids = tf.expand_dims(bids, 1)
+  all_anchors = tf.concat([bids, all_anchors], axis=1)
+  print('total anchors tensor shape: ', all_anchors.shape)
 #     unpacked_anchors = tf.unstack(all_anchors)
 #     print('{} numbers of anchors generated'.format(len(unpacked_anchors)))
 #     print('generated anchors: ', unpacked_anchors)
-    def score_fn(anchor):
-        xmin, ymin, xmax, ymax = anchor[0], anchor[1], anchor[2], anchor[3]
-        label = labels[xmin:xmax, ymin:ymax]
-        return tf.reduce_sum(label) / tf.to_float((xmax - xmin + 1) * (ymax - ymin + 1))
-    def loss_fn(anchor):
-        xmin, xmax, ymin, ymax = anchor[0], anchor[1], anchor[2], anchor[3]
-        l = labels[xmin:xmax, ymin:ymax]
-        p = features[xmin:xmax, ymin:ymax]
-        l = tf.to_float(l)
-        return (1 + 2 * tf.reduce_sum(p * l)) / (1 + tf.reduce_sum(p) + tf.reduce_sum(l))
-        
-    
-    scores = tf.map_fn(score_fn, all_anchors, dtype=tf.float32)
-    #addc(tf.reduce_max(scores, name='max_box_score'))
-    selected_indices = tf.image.non_max_suppression(tf.to_float(all_anchors), scores, score_threshold=THRESH, max_output_size=NMS_MAX_OUTPUT)        
-    #addc(tf.reduce_max(selected_indices, name='max_roi_idx'))
-    candidates = tf.gather(all_anchors, selected_indices)
-    dices = tf.map_fn(loss_fn, candidates, dtype=tf.float32)
-    #addc(tf.reduce_mean(dices, name='roi_dice_single'))
-    return tf.reduce_mean(dices)
+  def score_fn(anchor):
+      bid, xmin, ymin, xmax, ymax = anchor[0], anchor[1], anchor[2], anchor[3], anchor[4]
+      label = labels[bid, xmin:xmax, ymin:ymax]
+      return tf.reduce_sum(label) / tf.to_float((xmax - xmin + 1) * (ymax - ymin + 1))
+  def loss_fn(anchor):
+      bid, xmin, xmax, ymin, ymax = anchor[0], anchor[1], anchor[2], anchor[3], anchor[4]
+      l = labels[bid, xmin:xmax, ymin:ymax]
+      p = features[bid, xmin:xmax, ymin:ymax]
+      l = tf.to_float(l)
+      return (1 + 2 * tf.reduce_sum(p * l)) / (1 + tf.reduce_sum(p) + tf.reduce_sum(l))
+      
+  
+  scores = tf.map_fn(score_fn, all_anchors, dtype=tf.float32)
+  selected_indices = tf.image.non_max_suppression(tf.to_float(all_anchors[:,1:]), scores, score_threshold=thresh, max_output_size=MAX_OUTPUT_SIZE)        
+  candidates = tf.gather(all_anchors, selected_indices)
+  dices = tf.map_fn(loss_fn, candidates, dtype=tf.float32)
+
+  return dices
+
 
 def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
                                                   labels,
@@ -226,9 +235,9 @@ def roi_dice(logits, labels, scope_name=None):
     :return loss value scalar
     """
     preds = tf.nn.softmax(logits)[:,:,:,1]
-    X = tf.stack([preds, tf.to_float(labels)], axis=1)
-    dices = tf.map_fn(box_iou, X)
-    return tf.reduce_mean(dices)
+    with tf.variable_scope(scope_name or "roi_dice_coeff"):
+      dices = box_iou(preds, labels)
+      return tf.reduce_mean(dices)
 
 
 def lovasz_loss(labels, logits, scope_name=None):
